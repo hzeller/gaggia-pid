@@ -518,7 +518,7 @@
     (uuid "1ccf6312-fd46-4669-9722-1b0a94926d20")
     (property "Reference" "U1" (id 0) (at 134.62 87.63 0))
     (property "Value" "MAX31725" (id 1) (at 134.62 81.28 0))
-    (property "Footprint" "Package_DFN_QFN:TDFN-8-1EP_3x2mm_P0.5mm_EP1.80x1.65mm_ThermalVias" (id 2) (at 134.62 87.63 0)
+    (property "Footprint" "maxim-8tdfn-vias:DFN-8-1EP_3x3mm_P0.65mm_EP1.7x2.05mm" (id 2) (at 134.62 87.63 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "https://datasheets.maximintegrated.com/en/ds/MAX31725-MAX31726.pdf" (id 3) (at 134.62 87.63 0)
@@ -556,7 +556,7 @@
       (reference "R3") (unit 1) (value "4k7") (footprint "Resistor_SMD:R_0603_1608Metric")
     )
     (path "/1ccf6312-fd46-4669-9722-1b0a94926d20"
-      (reference "U1") (unit 1) (value "MAX31725") (footprint "Package_DFN_QFN:TDFN-8-1EP_3x2mm_P0.5mm_EP1.80x1.65mm_ThermalVias")
+      (reference "U1") (unit 1) (value "MAX31725") (footprint "maxim-8tdfn-vias:DFN-8-1EP_3x3mm_P0.65mm_EP1.7x2.05mm")
     )
   )
 )
