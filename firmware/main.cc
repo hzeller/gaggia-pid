@@ -17,16 +17,14 @@
 
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <avr/pgmspace.h>
 #include <avr/sleep.h>
 #include <util/delay.h>
 
 #include "i2c-master.h"
 #include "max31725.h"
 #include "serial-com.h"
-#include "sh1106-display.h"
 #include "strfmt.h"
-
-#include "font-smalltext.h"   // generated from smalltext.chars
 
 /*
  * Regular interval to take measurements and calculate a new PID control output
@@ -146,7 +144,6 @@ int main() {
   I2CMaster::Init();
   initTimer();
 
-  SH1106Display display;
   Max31725TempSensor sensor;
   SerialCom com;
 
@@ -162,12 +159,6 @@ int main() {
   bool logging = false;
   uint16_t log_time = 0;
 
-  // Unmodified Arduino Nano will reset on terminal connect. Make that visible.
-  display.ClearScreen();
-  display.Print(font_smalltext, 0, 24, "Reset");
-  _delay_ms(200);
-  display.ClearScreen();
-
   // Get ready to sleep. We're only doing anything when timer or serial calls.
   sleep_enable();
   sei();
@@ -182,11 +173,6 @@ int main() {
       decidegrees = thirty_twos_degrees > 0
         ? (thirty_twos_degrees * 3125 + 5000) / 10000
         : 0;
-
-      uint8_t pos = display.Print(font_smalltext, 0, 24,
-                                  strfmt(decidegrees, 1));
-      pos = display.Print(font_smalltext, pos, 24, "°C");
-      display.FillStripeRange(pos, 127, 24, 0x00);  // Clear rest of line
 
       if (logging) {
         printRAM(&com, strfmt(log_time, 3));
