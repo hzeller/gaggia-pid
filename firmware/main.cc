@@ -20,6 +20,7 @@
 #include <avr/pgmspace.h>
 #include <avr/sleep.h>
 #include <util/delay.h>
+#include <math.h>
 
 #include "i2c-master.h"
 #include "max31725.h"
@@ -59,15 +60,64 @@ static void printRAM(SerialCom *out, const char *str) {
   while (*str) out->write(*str++);
 }
 
+class Heater {
+  static constexpr uint8_t PORTB_LED_BIT = (1<<5);
+  static constexpr uint8_t PORTD_SSR_BIT = (1<<3);
+
+public:
+  static constexpr uint8_t kRange = 16;
+
+  Heater() {
+    DDRB |= PORTB_LED_BIT;
+    DDRD |= PORTD_SSR_BIT;
+  }
+
+  // Value of 0..kRange
+  // For safety, needs to be actively set once per period, otherwise will
+  // fall-back to zero. This prevents lock-up situations.
+  void SetValue(uint8_t v) {
+    if (v > kRange) v = kRange;
+    value_ = v;
+  }
+
+  void HandleTimeInterrupt(uint8_t global_time) volatile {
+    if ((global_time % kRange) == 0) {
+      pwm_state_ = value_;
+      value_ = 0;  // Will require to SetValue() again.
+    }
+
+    SetOn(pwm_state_ != 0);
+    if (pwm_state_ > 0) --pwm_state_;
+  }
+
+private:
+  void SetOn(bool b) volatile {
+    if (b) {
+      PORTB |= PORTB_LED_BIT;
+      PORTD |= PORTD_SSR_BIT;
+    } else {
+      PORTB &= ~PORTB_LED_BIT;
+      PORTD &= ~PORTD_SSR_BIT;
+    }
+  }
+
+  volatile uint8_t value_ = 0;      // Range from 0x00..0x0f
+  volatile uint8_t pwm_state_ = 0;  // Current PWM counter.
+};
+
 /*
  * Setting up timer to trigger an interrupt every kTimeBaseMs
  */
 static constexpr uint16_t kTimerCounts = F_CPU / 256 * kTimeBaseMs / 1000;
 static constexpr uint16_t kTimerRegister = 65535 - kTimerCounts;
+
+static Heater sHeater;
 volatile uint8_t measure_period = 0;
+
 ISR(TIMER1_OVF_vect) {
   measure_period++;
   TCNT1 = kTimerRegister;
+  sHeater.HandleTimeInterrupt(measure_period);
 }
 
 void initTimer() {
@@ -79,8 +129,8 @@ void initTimer() {
 
 // Print temperature and control value, and show in 'graphical' form.
 void printTemp(SerialCom *com, bool markline,
-               uint16_t decidegrees, uint8_t control_value,
-               uint8_t target_temp) {
+               int16_t decidegrees, uint8_t control_value,
+               int16_t target_temp_deci) {
   const ProgmemPtr vt100Underline = _P("\e[4m");
   const ProgmemPtr vt100Inverse   = _P("\e[7m");
   const ProgmemPtr vt100Reset     = _P("\e[0m");
@@ -95,8 +145,8 @@ void printTemp(SerialCom *com, bool markline,
   constexpr int kBaselineOffset = 15;  // Cut off boring lower part.
   decidegrees += 4;  // Full degree matches up with center of character cell
   const int degree_display = (decidegrees / 10) - kBaselineOffset;
-  const int target_display = target_temp > kBaselineOffset ?
-    target_temp - kBaselineOffset : 0;
+  const int target_display = (target_temp_deci/10) > kBaselineOffset ?
+    (target_temp_deci/10) - kBaselineOffset : 0;
   uint8_t max_run = target_display;
   if (degree_display > max_run) max_run = degree_display;
   if (control_value > max_run)  max_run = control_value;
@@ -151,9 +201,10 @@ int main() {
   char last_command = ' ';
 
   // Current state
-  uint16_t decidegrees = 0;   // From sensor
-  uint8_t pid_control_output = 12;
-  uint8_t set_temperature = 94;  // TODO: configure and store in EEPROM
+  int16_t decidegrees = 0;   // From sensor
+  volatile uint8_t pid_control_output = 0;
+  // Testing with low temperature for now.
+  int16_t set_temperature = 450;  // TODO: configure and store in EEPROM
 
   // Logging enable status and its current time.
   bool logging = false;
@@ -174,6 +225,13 @@ int main() {
         ? (thirty_twos_degrees * 3125 + 5000) / 10000
         : 0;
 
+      int16_t error = set_temperature - decidegrees;
+      // Firs step: super-simple proportional control.
+      if (error < 0) pid_control_output = 0;
+      else if (error < Heater::kRange) pid_control_output = error;
+      else pid_control_output = Heater::kRange;
+
+      sHeater.SetValue(pid_control_output);
       if (logging) {
         printRAM(&com, strfmt(log_time, 3));
         com.write('\t');
