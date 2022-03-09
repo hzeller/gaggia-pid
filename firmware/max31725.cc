@@ -18,9 +18,7 @@
 #include "max31725.h"
 #include "i2c-master.h"
 
-static constexpr uint8_t kBusAddress = 0x90;  // A0,1,2 all on GND
-
-int16_t Max31725TempSensor::GetTemp() {
+float Max31725TempSensor::GetTemp() {
   I2CMaster::StartTransmission(kBusAddress);
   I2CMaster::Write(0);  // Address zero - temperature register
   I2CMaster::FinishTransmission();
@@ -29,5 +27,6 @@ int16_t Max31725TempSensor::GetTemp() {
   int16_t result = I2CMaster::Read(true) << 8;
   result |= I2CMaster::Read(false);
   I2CMaster::FinishTransmission();
-  return result;
+
+  return result / 256.0f;
 }

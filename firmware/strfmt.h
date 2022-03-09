@@ -27,4 +27,6 @@
 // Returns pointer to NUL-terminated, statically allocated string.
 // (invalidated with the next strfmt() call).
 const char *strfmt(int32_t number, int8_t decimals, int8_t total_len = -1);
+
+const char *strfmt_float(float number, int8_t decimals, int8_t total_len = -1);
 #endif // STRFMT_H

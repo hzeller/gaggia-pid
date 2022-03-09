@@ -20,12 +20,13 @@
 
 #include <stdint.h>
 
+// https://datasheets.maximintegrated.com/en/ds/MAX31725-MAX31726.pdf
 class Max31725TempSensor {
 public:
-  Max31725TempSensor() {}
-  Max31725TempSensor(const Max31725TempSensor&) = delete;
+  static constexpr uint8_t kBusAddress = 0x90;  // A0,1,2 all on GND
 
-  int16_t GetTemp();
+  // Get temperature in celsius.
+  static float GetTemp();
 };
 
 #endif  // MAX31725_SENSOR_H

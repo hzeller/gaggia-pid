@@ -44,3 +44,12 @@ const char *strfmt(int32_t v, int8_t decimals, int8_t total_len) {
     *buffer-- = ' ';
   return buffer + 1;
 }
+
+const char *strfmt_float(float v, int8_t decimals, int8_t total_len) {
+  switch (decimals) {
+  case 0: return strfmt((int32_t)v, decimals, total_len);
+  case 1: return strfmt((int32_t)(v * 10.0), decimals, total_len);
+  case 2: return strfmt((int32_t)(v * 100.0),  decimals, total_len);
+  }
+  return "()";
+}

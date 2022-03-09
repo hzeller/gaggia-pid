@@ -19,13 +19,15 @@
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 #include <avr/sleep.h>
-#include <util/delay.h>
 #include <math.h>
+#include <util/delay.h>
 
 #include "i2c-master.h"
 #include "max31725.h"
 #include "serial-com.h"
 #include "strfmt.h"
+
+/* Note, we have plenty of flash, so we use the luxory of float numbers */
 
 /*
  * Regular interval to take measurements and calculate a new PID control output
@@ -60,6 +62,41 @@ static void printRAM(SerialCom *out, const char *str) {
   while (*str) out->write(*str++);
 }
 
+// PID with output range 0..1.0
+class PID {
+public:
+  PID(float dt) : dt_(dt) {}
+
+  // Update with new measurement. Return new control output value.
+  float Update(float measurement) {
+    const float error = setpoint - measurement;
+    const float p_val = kp * error;
+
+    integral_sum_ += error * dt_;
+    const float i_val = ki * integral_sum_;
+
+    const float d_val = kd * (error - last_error_) / dt_;
+    last_error_ = error;
+
+    const float control_output = p_val + i_val + d_val;
+    if (control_output < 0.0f) return 0.0f;
+    if (control_output > 1.0f) return 1.0f;
+    return control_output;
+  }
+
+  // Public fields to be modified directly.
+  float setpoint = 0.0f;
+
+  float kp = 1.0f;  // proportional factor
+  float kd = 0.0f;  // differential factor
+  float ki = 0.0f;  // integrate factor.
+
+private:
+  const float dt_;   // Time interval
+  float last_error_ = 0;
+  float integral_sum_ = 0;
+};
+
 class Heater {
   static constexpr uint8_t PORTB_LED_BIT = (1<<5);
   static constexpr uint8_t PORTD_SSR_BIT = (1<<3);
@@ -72,12 +109,13 @@ public:
     DDRD |= PORTD_SSR_BIT;
   }
 
-  // Value of 0..kRange
+  // Value of 0..1.0
   // For safety, needs to be actively set once per period, otherwise will
   // fall-back to zero. This prevents lock-up situations.
-  void SetValue(uint8_t v) {
-    if (v > kRange) v = kRange;
-    value_ = v;
+  void SetValue(float v) {
+    if (v < 0.0) v = 0;
+    if (v > 1.0) v = 1.0;
+    value_ = v * kRange;
   }
 
   void HandleTimeInterrupt(uint8_t global_time) volatile {
@@ -101,7 +139,7 @@ private:
     }
   }
 
-  volatile uint8_t value_ = 0;      // Range from 0x00..0x0f
+  volatile uint8_t value_ = 0;      // Range from 0x00..kRange
   volatile uint8_t pwm_state_ = 0;  // Current PWM counter.
 };
 
@@ -129,31 +167,40 @@ void initTimer() {
 
 // Print temperature and control value, and show in 'graphical' form.
 void printTemp(SerialCom *com, bool markline,
-               int16_t decidegrees, uint8_t control_value,
-               int16_t target_temp_deci) {
+               float measured, float control_value,
+               float target_temp,
+               bool with_graph) {
   const ProgmemPtr vt100Underline = _P("\e[4m");
   const ProgmemPtr vt100Inverse   = _P("\e[7m");
   const ProgmemPtr vt100Reset     = _P("\e[0m");
 
+  control_value *= 100.0f;  // Display in percent.
   // Raw values, formatted with tab to be easily parsed if needed.
-  printRAM(com, strfmt(decidegrees, 1));
+  printRAM(com, strfmt_float(measured, 2));
   com->write('\t');
-  printRAM(com, strfmt(control_value, 0));
+  printRAM(com, strfmt_float(target_temp, 1));
   com->write('\t');
+  printRAM(com, strfmt_float(control_value, 0));
+  print(com, _P("%\t"));
+
+  if (!with_graph) {
+    println(com);
+    return;
+  }
 
   // Useful for human consumption: some graph representation of above values
-  constexpr int kBaselineOffset = 15;  // Cut off boring lower part.
-  decidegrees += 4;  // Full degree matches up with center of character cell
-  const int degree_display = (decidegrees / 10) - kBaselineOffset;
-  const int target_display = (target_temp_deci/10) > kBaselineOffset ?
-    (target_temp_deci/10) - kBaselineOffset : 0;
+  constexpr float kBaselineOffset = 15;  // Cut off boring lower part.
+  const uint8_t degree_display = measured - kBaselineOffset;
+  const uint8_t target_display = target_temp > kBaselineOffset ?
+    target_temp - kBaselineOffset : 0;
   uint8_t max_run = target_display;
   if (degree_display > max_run) max_run = degree_display;
   if (control_value > max_run)  max_run = control_value;
 
+  const int decidegrees = 10.0f * measured;
   bool reset_needed = markline || target_display > 0;
   if (markline) print(com, vt100Underline);
-  for (int s = 0; s < max_run+1; ++s) {
+  for (uint8_t s = 0; s < max_run+1; ++s) {
     // The target temperature is an inverted character cell, so that we can
     // see the temperature line 'underneath'.
     if (s > 0 && s == target_display) print(com, vt100Inverse);
@@ -165,7 +212,7 @@ void printTemp(SerialCom *com, bool markline,
       case 7: case 8: case 9:         print(com, _P("\u2595")); break;
       }
     }
-    else if (s == control_value)
+    else if (s == (uint8_t)control_value)
       com->write('*');
     else
       com->write(' ');
@@ -185,7 +232,12 @@ void printUsage(SerialCom *com) {
                 "(c) 2021 Henner Zeller  |  GNU Public License\r\n"
                 "Commands\r\n"
                 "\tl - Start log to console. Stop with any key.\r\n"
+                "\tL - Ditto. With 'graph'\r\n"
                 "\tn - Now: current temperature and control PWM output.\r\n"
+                "\ts <setpoint> - set setpoint.\r\n"
+                "\tp <Kp>       - set proportional gain.\r\n"
+                "\td <Kd>       - set derivative gain.\r\n"
+                "\ti <Ki>       - set integral gain.\r\n"
                 "\th - This help\r\n"
                 ));
 }
@@ -194,49 +246,50 @@ int main() {
   I2CMaster::Init();
   initTimer();
 
+  PID pid(Heater::kRange * 0.1);  // Time interval once per PWM cycle.
   Max31725TempSensor sensor;
   SerialCom com;
 
   uint8_t last_measure_period = 0;
   char last_command = ' ';
 
-  // Current state
-  int16_t decidegrees = 0;   // From sensor
-  volatile uint8_t pid_control_output = 0;
-  // Testing with low temperature for now.
-  int16_t set_temperature = 450;  // TODO: configure and store in EEPROM
+  float measured_temp = 42.0;
 
+  // Testing with low temperature for now.
+  pid.setpoint = 93.0f;  // TODO: get from EEPROM
+  pid.kp = 0.1;
+  pid.kd = 0.0;
+  pid.ki = 0.0;
   // Logging enable status and its current time.
   bool logging = false;
+  bool logging_with_graph = false;
   uint16_t log_time = 0;
 
   // Get ready to sleep. We're only doing anything when timer or serial calls.
   sleep_enable();
   sei();
 
-  const ProgmemPtr kLoggingCSVHeader = _P("TIME\tTEMP\tCONTROL\tGRAPH");
+  float pid_control_output = 0.0f;
+
+  const ProgmemPtr kLoggingCSVHeader = _P("TIME\tTEMP\tTARGET\tCONTROL");
   for (;;) {
     sleep_cpu();  // Wake on interrupts from timer or serial.
 
     if (measure_period != last_measure_period) {  // timer triggered
       last_measure_period = measure_period;
-      const int32_t thirty_twos_degrees = sensor.GetTemp() >> 3;
-      decidegrees = thirty_twos_degrees > 0
-        ? (thirty_twos_degrees * 3125 + 5000) / 10000
-        : 0;
+      measured_temp = sensor.GetTemp();
 
-      int16_t error = set_temperature - decidegrees;
-      // Firs step: super-simple proportional control.
-      if (error < 0) pid_control_output = 0;
-      else if (error < Heater::kRange) pid_control_output = error;
-      else pid_control_output = Heater::kRange;
+      // Update the PID just before the heater starts its next PWM cycle.
+      if (last_measure_period % Heater::kRange == Heater::kRange - 1) {
+        pid_control_output = pid.Update(measured_temp);
+        sHeater.SetValue(pid_control_output);
+      }
 
-      sHeater.SetValue(pid_control_output);
       if (logging) {
         printRAM(&com, strfmt(log_time, 3));
         com.write('\t');
-        printTemp(&com, log_time==0, decidegrees, pid_control_output,
-                  set_temperature);
+        printTemp(&com, log_time==0, measured_temp, pid_control_output,
+                  pid.setpoint, logging_with_graph);
         log_time += kTimeBaseMs;
         log_time %= 1000;
       }
@@ -251,17 +304,20 @@ int main() {
         continue;
       }
       switch (c) {
-      case 'n': {   // Print value 'now'
+      case 'n':
+      case 'N': {   // Print value 'now'
         if (last_command != 'n')  // First time: print header
           println(&com, kLoggingCSVHeader);
         print(&com, _P("Now\t"));
-        printTemp(&com, false, decidegrees, pid_control_output,
-                  set_temperature);
+        printTemp(&com, false, measured_temp, pid_control_output,
+                  pid.setpoint, c == 'N');
         break;
       }
 
       case 'l':    // Trigger logging.
+      case 'L':    // Trigger logging.
         logging = true;
+        logging_with_graph = (c == 'L');
         println(&com, _P("logging started. Stop with any key."));
         println(&com, kLoggingCSVHeader);
         break;
