@@ -91,7 +91,7 @@ static void printRAM(SerialCom *out, const char *str) {
 static const char* readln(SerialCom *comm) {
   static char buffer[10];
   char *pos = buffer;
-  for (int remaining = sizeof(buffer) - 1; remaining; --remaining) {
+  while (pos < buffer + sizeof(buffer) - 1) {
     char c = comm->read();
     if (c == '\033') {
       *buffer = '\0';   // Cancel editing. Return empty buffer.
