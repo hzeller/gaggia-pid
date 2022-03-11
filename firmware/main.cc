@@ -192,11 +192,7 @@ public:
 
     // If we happen to read garbage make sure we're in some reasonable
     // range.
-    if (isnan(setpoint) || setpoint < 10.0f || setpoint > 105.0f)
-      setpoint = 85.0f;
-    if (isnan(kp) || kp < -10.0f || kp > 10.0f) kp = 0.1;
-    if (isnan(ki) || ki < -10.0f || ki > 10.0f) ki = 0.0;
-    if (isnan(kd) || kd < -10.0f || kd > 10.0f) kd = 0.0;
+    Sanitize();
   }
 
   void ToConfig(ConfigData *c) {
@@ -204,6 +200,14 @@ public:
     c->kp = kp;
     c->kd = kd;
     c->ki = ki;
+  }
+
+  void Sanitize() {
+    if (isnan(setpoint) || setpoint < 0.0f) setpoint = 85.0f;
+    if (setpoint > 110.0f) setpoint = 110.0f;
+    if (isnan(kp) || kp < -10.0f || kp > 10.0f) kp = 0.1;
+    if (isnan(ki) || ki < -10.0f || ki > 10.0f) ki = 0.0;
+    if (isnan(kd) || kd < -10.0f || kd > 10.0f) kd = 0.0;
   }
 
 private:
@@ -442,24 +446,28 @@ int main() {
       case 's':
         print(&com, _P("set setpoint = "));
         readNumber(&com, &pid.setpoint);
+        pid.Sanitize();
         pid.Print(&com, false);
         break;
 
       case 'p':
         print(&com, _P("set Kp = "));
         readNumber(&com, &pid.kp);
+        pid.Sanitize();
         pid.Print(&com, false);
         break;
 
       case 'i':
         print(&com, _P("set Ki = "));
         readNumber(&com, &pid.ki);
+        pid.Sanitize();
         pid.Print(&com, false);
         break;
 
       case 'd':
         print(&com, _P("set Kd = "));
         readNumber(&com, &pid.kd);
+        pid.Sanitize();
         pid.Print(&com, false);
         break;
 
