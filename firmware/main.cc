@@ -352,6 +352,7 @@ void printUsage(SerialCom *com) {
            "#Commands\r\n"
            "#\tl - Start log to console. Stop with any key.\r\n"
            "#\tL - Ditto. With 'graph'\r\n"
+           "#\tn - Now. Print PID parameters, last temp and control out.\r\n"
            "#\r\n"
            "#\ts <setpoint> - set setpoint.\r\n"
            "#\tp <Kp>       - set proportional gain.\r\n"
@@ -427,7 +428,7 @@ int main() {
       }
       switch (c) {
       case 'l':    // Trigger logging.
-      case 'L':    // Trigger logging.
+      case 'L':    // ... with graph.
         logging = true;
         logging_with_graph = (c == 'L');
         println(&com, _P("# logging started. Stop with any key."));
@@ -437,25 +438,25 @@ int main() {
       case 's':
         print(&com, _P("set setpoint = "));
         readNumber(&com, &pid.setpoint);
-        pid.Print(&com, true);
+        pid.Print(&com, false);
         break;
 
       case 'p':
         print(&com, _P("set Kp = "));
         readNumber(&com, &pid.kp);
-        pid.Print(&com, true);
+        pid.Print(&com, false);
         break;
 
       case 'i':
         print(&com, _P("set Ki = "));
         readNumber(&com, &pid.ki);
-        pid.Print(&com, true);
+        pid.Print(&com, false);
         break;
 
       case 'd':
         print(&com, _P("set Kd = "));
         readNumber(&com, &pid.kd);
-        pid.Print(&com, true);
+        pid.Print(&com, false);
         break;
 
       case 'n':
