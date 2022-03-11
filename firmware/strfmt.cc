@@ -50,6 +50,7 @@ const char *strfmt_float(float v, int8_t decimals, int8_t total_len) {
   case 0: return strfmt((int32_t)v, decimals, total_len);
   case 1: return strfmt((int32_t)(v * 10.0), decimals, total_len);
   case 2: return strfmt((int32_t)(v * 100.0),  decimals, total_len);
+  case 3: return strfmt((int32_t)(v * 1000.0),  decimals, total_len);
   }
   return "()";
 }
