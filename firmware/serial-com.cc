@@ -53,7 +53,7 @@ SerialCom::SerialCom() : dropped_reads_(0) {
 #if FEATURE_BAUD_CHANGE
   SetBaud(SERIAL_BAUDRATE);
 #else
-  const unsigned int divider = (F_CPU  / 16 / SERIAL_BAUDRATE) - 1;
+  constexpr unsigned int divider = (F_CPU  / 16 / SERIAL_BAUDRATE) - 1;
   UBRRH = (unsigned char)(divider >> 8);
   UBRRL = (unsigned char) divider;
 #endif
@@ -86,7 +86,7 @@ void SerialCom::SetBaud(uint16_t bd) {
   UBRRL = (unsigned char) divider;
   baud_ = bd;
 }
-#endif
+#endif  // FEATURE_BAUD_CHANGE
 
 void SerialCom::write(char c) {
   while ( !( UCSRA & (1<<UDRE)) )  // wait for transmit buffer to be ready.

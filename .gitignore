@@ -1,0 +1,5 @@
+*.o
+.compiler-flags
+*.elf
+*.hex
+*~

@@ -9,7 +9,7 @@
 #include "ringbuffer.h"
 
 class SerialCom {
-  enum { RX_BUFFER_BITS = 6 };  // Buffer uses 2^BUFFER_BITS bytes.
+  static constexpr int RX_BUFFER_BITS = 6;  // Buffer uses 2^BUFFER_BITS bytes.
 public:
   // Setting up the serial interface. Baudrate is given as -DSERIAL_BAUDRATE
   // Otherwise simply 8N1.

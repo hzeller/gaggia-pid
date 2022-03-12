@@ -18,15 +18,18 @@
 #include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
-#include <avr/pgmspace.h>
 #include <avr/sleep.h>
 #include <math.h>
-#include <util/delay.h>
 #include <stdlib.h>
+#include <util/delay.h>
+#include <string.h>
 
 #include "i2c-master.h"
 #include "max31725.h"
+#include "pid.h"
+#include "progmem.h"
 #include "serial-com.h"
+#include "serial-util.h"
 #include "strfmt.h"
 
 /* Note, we have plenty of flash, so we use the luxory of float numbers */
@@ -37,7 +40,7 @@
 static constexpr uint16_t kTimeBaseMs = 100;
 
 static struct ConfigData {
-  char dummy;  // Leave first char free
+  char dummy;  // Leave first char free, sometimes containing garbage.
 
   // PID info.
   float setpoint;
@@ -59,68 +62,12 @@ static struct ConfigData {
   }
 } EEMEM eeConfigData;
 
-/*
- * Printing to serial interface utility functions
- */
-// Pointer to progmem string. Wrapped into separate type to have a type-safe
-// way to deal with it.
-struct ProgmemPtr {
-  explicit constexpr ProgmemPtr(const char *d) : data(d) {}
-  const char *data;
-};
-#define _P(s) ProgmemPtr(PSTR(s))
-
-static void print(SerialCom *out, ProgmemPtr str) {
- char c;
- while ((c = pgm_read_byte(str.data++)) != 0x00)
-   out->write(c);
-}
-static void println(SerialCom *out) { print(out, _P("\r\n")); }
-static void println(SerialCom *out, ProgmemPtr str) {
-  print(out, str);
-  println(out);
-}
-
-// Printing from RAM with a slightly more obnoxious name to remind of
-// prefering the Progmem-kind.
-static void printRAM(SerialCom *out, const char *str) {
-  while (*str) out->write(*str++);
-}
-
-// Read line up to 10 characters.
-static const char* readln(SerialCom *comm) {
-  static char buffer[10];
-  char *pos = buffer;
-  for (;;) {
-    char c = comm->read();
-    if (c == '\033') {
-      *buffer = '\0';   // Cancel editing. Return empty buffer.
-      return buffer;
-    }
-    if (c == '\r' || c == '\n')
-      break;  // Newline.
-    if (c == 127) {  // Backspace. Provide rudimentary editing.
-      if (pos > buffer) {
-        pos--;
-        comm->write('\b');
-        comm->write(' ');
-        comm->write('\b');
-      }
-      continue;
-    }
-    if (pos < buffer + sizeof(buffer) - 1) {
-      comm->write(c);
-      *pos++ = c;
-    } else {
-      comm->write('\a');  // beep.
-    }
-  }
-  *pos = '\0';
-  return buffer;
-}
-
-static bool readNumber(SerialCom *comm, float *value) {
-  const char *str = readln(comm);
+// Read number from serial and indicate if it was successful.
+// Pre-fill the editline with the existing number with given digits.
+static bool readNumber(SerialCom *comm, float *value, int digits) {
+  char buffer[10];
+  strcpy(buffer, strfmt_float(*value, digits));
+  const char *str = readln(comm, buffer, sizeof(buffer), true);
   char *endptr = nullptr;
   float converted = strtod(str, &endptr);
   if (endptr != str) {
@@ -133,101 +80,20 @@ static bool readNumber(SerialCom *comm, float *value) {
   }
 }
 
-// PID with output range 0..1.0
-class PID {
-public:
-  PID(float dt) : dt_(dt) {}
-
-  // Public fields to be modified directly or read/written from config.
-  float setpoint = 50.0f;
-
-  float kp = 1.0f;  // proportional factor
-  float kd = 0.0f;  // differential factor
-  float ki = 0.0f;  // integrate factor.
-
-  // Update with new measurement. Return new control output value.
-  float Update(float measurement) {
-    const float error = setpoint - measurement;
-    const float p_val = kp * error;
-
-    integral_sum_ += error * dt_;
-    const float i_val = ki * integral_sum_;
-
-    const float d_val = kd * (error - last_error_) / dt_;
-    last_error_ = error;
-
-    float control_output = p_val + i_val + d_val;
-    if (control_output < 0.0f) control_output = 0.0f;
-    if (control_output > 1.0f) control_output = 1.0f;
-
-    last_measurement_ = measurement;
-    last_control_output_ = control_output;
-
-    return control_output;
-  }
-
-  void Print(SerialCom *com, bool include_last_values) const {
-#define PRINT_VAL(desc, value, resolution)                              \
-    print(com, _P(desc)); printRAM(com, strfmt_float(value, resolution)); \
-    print(com, _P("; "));
-
-    PRINT_VAL("setpoint=", setpoint, 2);
-    PRINT_VAL("Kp=", kp, 3);
-    PRINT_VAL("Ki=", ki, 3);
-    PRINT_VAL("Kd=", kd, 3);
-
-    if (include_last_values) {
-      PRINT_VAL("LAST: input=", last_measurement_, 2);
-      PRINT_VAL("output=", last_control_output_, 2);
-    }
-    println(com);
-#undef PRINT_VAL
-  }
-
-  void FromConfig(const ConfigData &c) {
-    setpoint = c.setpoint;
-    kp = c.kp;
-    kd = c.kd;
-    ki = c.ki;
-
-    // If we happen to read garbage make sure we're in some reasonable
-    // range.
-    Sanitize();
-  }
-
-  void ToConfig(ConfigData *c) {
-    c->setpoint = setpoint;
-    c->kp = kp;
-    c->kd = kd;
-    c->ki = ki;
-  }
-
-  void Sanitize() {
-    if (isnan(setpoint) || setpoint < 0.0f) setpoint = 85.0f;
-    if (setpoint > 110.0f) setpoint = 110.0f;
-    if (isnan(kp) || kp < -10.0f || kp > 10.0f) kp = 0.1;
-    if (isnan(ki) || ki < -10.0f || ki > 10.0f) ki = 0.0;
-    if (isnan(kd) || kd < -10.0f || kd > 10.0f) kd = 0.0;
-  }
-
-private:
-  const float dt_;   // Time interval
-  float last_error_ = 0;
-  float integral_sum_ = 0;
-
-  // Mostly for printing
-  float last_measurement_ = 0;
-  float last_control_output_ = 0;
-};
-
-class Heater {
+// A slow PWM of the heater. There is not much point in high-speed PWM with
+// a zero-cross SSD, so we manually trigger with a timer interrupt.
+// We go through one full cycle in kRange time interrupts.
+//
+// For safety, the value needs to be set for each cycle individually, otherwise
+// we fail-safe to zero output.
+class HeaterPWM {
   static constexpr uint8_t PORTB_LED_BIT = (1<<5);
   static constexpr uint8_t PORTD_SSR_BIT = (1<<3);
 
 public:
   static constexpr uint8_t kRange = 16;
 
-  Heater() {
+  HeaterPWM() {
     DDRB |= PORTB_LED_BIT;
     DDRD |= PORTD_SSR_BIT;
   }
@@ -266,19 +132,22 @@ private:
   volatile uint8_t pwm_state_ = 0;  // Current PWM counter.
 };
 
+// There is only one global instance, accessible to the timer interrupt
+static HeaterPWM sHeater;
+
 /*
  * Setting up timer to trigger an interrupt every kTimeBaseMs
  */
 static constexpr uint16_t kTimerCounts = F_CPU / 256 * kTimeBaseMs / 1000;
 static constexpr uint16_t kTimerRegister = 65535 - kTimerCounts;
 
-static Heater sHeater;
-volatile uint8_t measure_period = 0;
+// Global time, increasing with timer interrupt. Wrapping around at 8 bit.
+volatile uint8_t sGlobalTime = 0;
 
 ISR(TIMER1_OVF_vect) {
-  measure_period++;
+  sGlobalTime++;
   TCNT1 = kTimerRegister;
-  sHeater.HandleTimeInterrupt(measure_period);
+  sHeater.HandleTimeInterrupt(sGlobalTime);
 }
 
 void initTimer() {
@@ -364,8 +233,8 @@ void printUsage(SerialCom *com) {
            "#\r\n"
            "#\ts <setpoint> - set setpoint.\r\n"
            "#\tp <Kp>       - set proportional gain.\r\n"
-           "#\td <Kd>       - set derivative gain.\r\n"
            "#\ti <Ki>       - set integral gain.\r\n"
+           "#\td <Kd>       - set derivative gain.\r\n"
            "#\r\n"
            "#\tw - Write PID parameters to EEPROM.\r\n"
            "#\tr - Restore PID parameters from EEPROM.\r\n"
@@ -377,7 +246,7 @@ int main() {
   I2CMaster::Init();
   initTimer();
 
-  PID pid(Heater::kRange * 0.1);  // Time interval once per PWM cycle.
+  PID pid(HeaterPWM::kRange * 0.1);  // Time interval once per PWM cycle.
   Max31725TempSensor sensor;
   SerialCom com;
 
@@ -392,7 +261,7 @@ int main() {
   uint16_t log_time = 0;
 
   // Serial line connect apparently resets Arduino Nano.
-  // Use that as an opportunity to print.
+  // Use that as an opportunity to print welcome and usage message.
   printUsage(&com);
 
   eeConfigData.Read();
@@ -406,12 +275,12 @@ int main() {
   for (;;) {
     sleep_cpu();  // Wake on interrupts from timer or serial.
 
-    if (measure_period != last_measure_period) {  // timer triggered
-      last_measure_period = measure_period;
+    if (sGlobalTime != last_measure_period) {  // timer triggered
+      last_measure_period = sGlobalTime;
       measured_temp = sensor.GetTemp();
 
       // Update the PID just before the heater starts its next PWM cycle.
-      if (last_measure_period % Heater::kRange == Heater::kRange - 1) {
+      if (last_measure_period % HeaterPWM::kRange == HeaterPWM::kRange - 1) {
         pid_control_output = pid.Update(measured_temp);
         sHeater.SetValue(pid_control_output);
       }
@@ -445,28 +314,28 @@ int main() {
 
       case 's':
         print(&com, _P("set setpoint = "));
-        readNumber(&com, &pid.setpoint);
+        readNumber(&com, &pid.setpoint, 1);
         pid.Sanitize();
         pid.Print(&com, false);
         break;
 
       case 'p':
         print(&com, _P("set Kp = "));
-        readNumber(&com, &pid.kp);
+        readNumber(&com, &pid.kp, 3);
         pid.Sanitize();
         pid.Print(&com, false);
         break;
 
       case 'i':
         print(&com, _P("set Ki = "));
-        readNumber(&com, &pid.ki);
+        readNumber(&com, &pid.ki, 3);
         pid.Sanitize();
         pid.Print(&com, false);
         break;
 
       case 'd':
         print(&com, _P("set Kd = "));
-        readNumber(&com, &pid.kd);
+        readNumber(&com, &pid.kd, 3);
         pid.Sanitize();
         pid.Print(&com, false);
         break;

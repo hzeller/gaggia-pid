@@ -15,7 +15,7 @@ AVRDUDE_DEVICE ?= /dev/ttyUSB0
 AVRDUDE     = avrdude -p m328p -c arduino -b57600 -P $(AVRDUDE_DEVICE)
 FLASH_CMD   = $(AVRDUDE) -e -U flash:w:main.hex
 LINK=avr-g++ $(TARGET_ARCH) -Wl,-gc-sections
-OBJECTS=main.o strfmt.o serial-com.o i2c-master.o max31725.o
+OBJECTS=main.o strfmt.o serial-com.o serial-util.o pid.o i2c-master.o max31725.o
 
 all : main.hex
 
