@@ -27,19 +27,26 @@ float PID::Update(float measurement) {
   const float error = setpoint - measurement;
   const float p_val = kp * error;
 
-  integral_sum_ += error * dt_;
-  if (integral_sum_ < -1.0) integral_sum_ = -1.0;
-  if (integral_sum_ > 1.0) integral_sum_ = 1.0;
+  if (!integral_on_hold_) integral_sum_ += error * dt_;
   const float i_val = ki * integral_sum_;
 
   const float d_val = kd * (error - last_error_) / dt_;
   last_error_ = error;
 
-  float control_output = p_val + i_val + d_val;
-  if (control_output < 0.0f)
-    control_output = 0.0f;
-  if (control_output > 1.0f)
-    control_output = 1.0f;
+  const float raw_output = p_val + i_val + d_val;
+  float control_output = raw_output;
+  if (control_output < 0.0f) control_output = 0.0f;  // clamp.
+  if (control_output > 1.0f) control_output = 1.0f;
+
+  // We're in saturation, if we had to clamp the output.
+  const bool in_saturation = (control_output != raw_output);
+
+  // If we are in saturation and currently keep pushing towards correcting
+  // the error (i.e. output and error have the same sign), let's stop
+  // integrating (we already do our best); if we kept adding to our integration,
+  // it would take a long while to undo the term that went beyond clamping.
+  const bool same_sign = !((error < 0.0f) ^ (raw_output < 0.0f));
+  integral_on_hold_ = in_saturation && same_sign;
 
   last_measurement_ = measurement;
   last_control_output_ = control_output;
@@ -74,6 +81,7 @@ void PID::Print(SerialCom *com, bool include_last_values) const {
     printRAM(com, strfmt_float(i_val, 3));
     print(com, _P(") = "));
     printRAM(com, strfmt_float(p_val + i_val, 3));
+    if (integral_on_hold_) print(com, _P(" integration on hold"));
   }
   println(com);
 #undef PRINT_VAL

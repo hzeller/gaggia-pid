@@ -65,6 +65,7 @@ private:
   const float dt_;   // Time interval
   float last_error_ = 0;
   float integral_sum_ = 0;
+  bool integral_on_hold_ = false;
 
   // Mostly for printing
   float last_measurement_ = 0;
