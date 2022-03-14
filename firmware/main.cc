@@ -15,14 +15,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <avr/sleep.h>
-#include <math.h>
-#include <stdlib.h>
-#include <util/delay.h>
-#include <string.h>
 
 #include "i2c-master.h"
 #include "max31725.h"
@@ -37,7 +37,7 @@
 /*
  * Regular interval to take measurements and calculate a new PID control output
  */
-static constexpr uint16_t kTimeBaseMs = 100;
+static constexpr uint16_t kTimeBaseMs = 50;
 
 static struct ConfigData {
   char dummy;  // Leave first char free, sometimes containing garbage.
@@ -91,7 +91,7 @@ class HeaterPWM {
   static constexpr uint8_t PORTD_SSR_BIT = (1<<3);
 
 public:
-  static constexpr uint8_t kRange = 16;
+  static constexpr uint8_t kRange = 32;
 
   HeaterPWM() {
     DDRB |= PORTB_LED_BIT;
@@ -246,7 +246,8 @@ int main() {
   I2CMaster::Init();
   initTimer();
 
-  PID pid(HeaterPWM::kRange * 0.1);  // Time interval once per PWM cycle.
+  // PID interval once per full PWM cycle.
+  PID pid(HeaterPWM::kRange * kTimeBaseMs * 0.001);
   Max31725TempSensor sensor;
   SerialCom com;
 
