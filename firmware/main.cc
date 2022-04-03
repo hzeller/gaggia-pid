@@ -96,6 +96,7 @@ public:
   HeaterPWM() {
     DDRB |= PORTB_LED_BIT;
     DDRD |= PORTD_SSR_BIT;
+    SetOn(false);  // Safe starting point.
   }
 
   // Value of 0..1.0
