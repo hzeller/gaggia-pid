@@ -3,3 +3,5 @@
 *.elf
 *.hex
 *~
+.direnv
+.envrc
