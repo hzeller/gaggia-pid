@@ -157,7 +157,7 @@
       (net 1 "GND") (pinfunction "EP") (tstamp 9b9d121b-13d7-416a-99f8-c9e85d91a0f6))
     (pad "9" thru_hole circle locked (at 0.4 -0.55 90) (size 0.7 0.7) (drill 0.4) (layers *.Cu *.Mask)
       (net 1 "GND") (pinfunction "EP") (tstamp 9ff9f4ef-502c-4dcc-944a-71a42ebd5047))
-    (model "${KISYS3DMOD}/Package_DFN_QFN.3dshapes/DFN-8-1EP_3x3mm_P0.65mm_EP1.7x2.05mm.wrl"
+    (model "${KICAD6_3DMODEL_DIR}/Package_DFN_QFN.3dshapes/DFN-8-1EP_3x3mm_P0.65mm_EP1.7x2.05mm.wrl"
       (offset (xyz 0 0 0))
       (scale (xyz 1 1 1))
       (rotate (xyz 0 0 0))
@@ -199,7 +199,7 @@
       (net 2 "VCC") (tstamp e9ccfa96-eac9-4914-ad65-1b5048585453))
     (pad "2" smd roundrect locked (at 0.7875 0) (size 0.875 0.95) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25)
       (net 1 "GND") (tstamp a1b8b045-2240-4693-8e9b-d3f87e0afebc))
-    (model "${KISYS3DMOD}/Capacitor_SMD.3dshapes/C_0603_1608Metric.wrl"
+    (model "${KICAD6_3DMODEL_DIR}/Capacitor_SMD.3dshapes/C_0603_1608Metric.wrl"
       (offset (xyz 0 0 0))
       (scale (xyz 1 1 1))
       (rotate (xyz 0 0 0))
@@ -241,7 +241,7 @@
       (net 2 "VCC") (tstamp 3f24bbf0-567c-4258-9553-28a5ff8320e8))
     (pad "2" smd roundrect locked (at 0.7875 0 270) (size 0.875 0.95) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25)
       (net 5 "/SDA") (tstamp 7df3c6af-39ef-41e8-85b1-a0f89c2c51cc))
-    (model "${KISYS3DMOD}/Resistor_SMD.3dshapes/R_0603_1608Metric.wrl"
+    (model "${KICAD6_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_0603_1608Metric.wrl"
       (offset (xyz 0 0 0))
       (scale (xyz 1 1 1))
       (rotate (xyz 0 0 0))
@@ -283,7 +283,7 @@
       (net 2 "VCC") (tstamp 3d84dafa-8460-472d-9ea6-f84f313266e0))
     (pad "2" smd roundrect locked (at 0.7875 0 270) (size 0.875 0.95) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25)
       (net 4 "/SCL") (tstamp 4437d4d2-51b4-45bc-936d-10cfa50b4435))
-    (model "${KISYS3DMOD}/Resistor_SMD.3dshapes/R_0603_1608Metric.wrl"
+    (model "${KICAD6_3DMODEL_DIR}/Resistor_SMD.3dshapes/R_0603_1608Metric.wrl"
       (offset (xyz 0 0 0))
       (scale (xyz 1 1 1))
       (rotate (xyz 0 0 0))
