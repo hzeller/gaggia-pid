@@ -9,5 +9,6 @@ pkgs.mkShell {
       kicad
       pkgsCross.avr.buildPackages.gcc8
       avrdude
+      tio
     ];
 }

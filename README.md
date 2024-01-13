@@ -44,7 +44,13 @@ displayed).
 PID parameters can be tuned with the interface presented on the serial
 interface and stored in EEPROM.
 
-Menu on the serial interface:
+Serial interface running by default on 38400 bps:
+
+```bash
+tio -b 38400 /dev/ttyUSB0
+```
+
+Menu:
 ```
 #            ☕ Gaggia PID controller
 #(c) 2021 Henner Zeller  |  GNU Public License
