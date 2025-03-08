@@ -7,7 +7,7 @@ pkgs.mkShell {
   buildInputs = with pkgs;
     [
       kicad
-      pkgsCross.avr.buildPackages.gcc8
+      pkgsCross.avr.buildPackages.gcc9
       avrdude
       tio
     ];
