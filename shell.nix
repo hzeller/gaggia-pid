@@ -7,7 +7,9 @@ pkgs.mkShell {
   buildInputs = with pkgs;
     [
       kicad
-      pkgsCross.avr.buildPackages.gcc9
+      # text-size: gcc13->7920; gcc14->7900; gcc15->7942
+      # Choosing 14 for that reason.
+      pkgsCross.avr.buildPackages.gcc14
       avrdude
       tio
     ];
