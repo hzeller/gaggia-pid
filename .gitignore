@@ -5,3 +5,5 @@
 *~
 .direnv
 .envrc
+fp-info-cache
+*-backups
